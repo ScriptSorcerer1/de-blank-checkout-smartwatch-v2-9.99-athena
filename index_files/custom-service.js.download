@@ -1,0 +1,151 @@
+reDefine([], function () {
+  function serviceFn(data) {
+    var customService = new Vue({
+      el: '#custom-service',
+      data() {
+        return {
+          show: false,
+          serviceLink: [],
+          serviceLinkHint: data.serviceLinkHint,
+          icon: data.icon,
+          secondStepShow: false,
+          secondServiceLink: [],
+          curServiceType: ''
+        };
+      },
+      mounted() {
+        this.getCustomerServiceLink();
+      },
+      methods: {
+        close() {
+          if (this.secondStepShow) {
+            this.secondStepShow = false;
+          } else {
+            this.closeMask();
+          }
+        },
+        closeMask() {
+          this.show = false;
+          $('body').removeClass('disable-scroll');
+          this.secondStepShow = false;
+        },
+        go(val) {
+          this.curServiceType = val.type;
+          if (val.type && val.type.includes('zendesk')) {
+            try {
+              zE('messenger', 'show');
+              zE('messenger', 'open');
+              zE('messenger:on', 'close', function () {
+                zE('messenger', 'hide');
+              });
+            } catch (err) {
+              console.log(err);
+              zE('webWidget', 'show');
+              zE('webWidget', 'open');
+              zE('webWidget:on', 'close', function () {
+                zE('webWidget', 'hide');
+              });
+            }
+            this.close();
+          } else if (val.list.length > 1) {
+            this.secondServiceLink = val.list;
+            this.secondStepShow = true;
+          } else {
+            window.open(val.list[0].link);
+            this.close();
+          }
+        },
+        open(val) {
+          window.open(val.link);
+          this.close();
+        },
+        getCustomerServiceLink() {
+          var params = {
+            marketId: data.marketId
+          }
+          if(typeof data.orgCode !== 'undefined') {
+            params.orgCode = data.orgCode;
+          }
+          customerApi
+            .getCustomerServiceLink(params)
+            .then(res => {
+              if (res && res.length) {
+                this.serviceLink = res.map(v => {
+                  let item = this.serviceLinkHint[v.type];
+                  if (item) {
+                    v.name = item.name;
+                    v.icon = item.icon;
+                  } 
+                  if(v.type === 'whatsapp' && v.list.length) {
+                      v.list.forEach(item =>{
+                        item.link = item.link + escape(window.location.href);
+                      })
+                  }
+                  return v;
+                });
+                if ($('.service-btn,#serviceKf,.serviceKf').length) {
+                  let serviceAttr = $('.service-btn,#serviceKf,.serviceKf')
+                    .attr('class')
+                    .split(/\s+/);
+                  serviceAttr.forEach(v => {
+                    $('body').off('click', '.' + v);
+                  });
+                  $('.service-btn,#serviceKf,.serviceKf').off('click').addClass('custom-service-btn');
+                }
+                if (typeof data.noZe != 'undefined' && data.noZe) {
+                  let ze = res.find(v => v.type == 'zendesk');
+                  if (ze) {
+                    let len = ze.list.length - 1;
+                    $('head').append(ze.list[len].link);
+                    let timer = setInterval(function () {
+                      if (typeof zE != 'undefined') {
+                        clearInterval(timer);
+                        window.zESettings = {
+                          webWidget: {
+                            chat: {
+                              menuOptions: {
+                                emailTranscript: false
+                              },
+                              departments: {
+                                enabled: ['']
+                              }
+                            }
+                          }
+                        };
+                        try {
+                          zE('messenger', 'hide');
+                        } catch (err) {
+                          console.log(err);
+                          zE('webWidget', 'hide');
+                        }
+                      }
+                    }, 300);
+                  }
+                }
+              }
+            })
+            .catch(err => console.log(err));
+        },
+        copy(name, val) {
+          var clipBoard = new ClipboardJS('.' + name, {
+            text: () => {
+              return val; // 返回需要复制的内容
+            }
+          });
+          clipBoard.on('success', () => {
+            toast(data.emailCopySuccess);
+          });
+          clipBoard.on('error', e => {
+            console.log(e);
+          });
+        }
+      }
+    });
+
+    $('body').on('click', '.custom-service-btn', function (e) {
+      customService.show = true;
+      $('body').addClass('disable-scroll');
+    });
+  }
+  return { serviceFn };
+});
